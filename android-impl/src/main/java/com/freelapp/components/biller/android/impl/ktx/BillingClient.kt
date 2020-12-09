@@ -6,8 +6,8 @@ import com.android.billingclient.api.BillingClient.SkuType.SUBS
 import com.freelapp.components.biller.entity.sku.AcknowledgeableSku
 import com.freelapp.components.biller.entity.sku.ConsumableSku
 import com.freelapp.components.biller.entity.sku.SkuContract
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 internal suspend fun BillingClient.acknowledge(purchase: Purchase): Boolean {
     return when (purchase.purchaseState) {
@@ -74,28 +74,17 @@ internal suspend fun BillingClient.queryAcknowledgeAndConsumePurchases(
     skus: Set<SkuContract>
 ): QueryResult {
     val purchases = queryAllPurchases()
-    val acknowledged =
+    val acknowledgedOrConsumed =
         purchases
             .mapNotNull {
-                skus.getBySku(it.sku)?.let { sku ->
-                    sku to acknowledgeOrConsume(it, sku)
-                }
+                skus.getBySku(it.sku)?.let { sku -> sku to acknowledgeOrConsume(it, sku) }
             }
             .toMap()
             .filterValues { it }
-            .mapKeys { (sku, _) -> sku as AcknowledgeableSku }
             .keys
-    val consumed =
-        purchases
-            .mapNotNull {
-                skus.getBySku(it.sku)?.let { sku ->
-                    sku to acknowledgeOrConsume(it, sku)
-                }
-            }
-            .toMap()
-            .filterValues { it }
-            .mapKeys { (sku, _) -> sku as ConsumableSku }
-            .keys
+
+    val acknowledged = acknowledgedOrConsumed.filterIsInstance<AcknowledgeableSku>().toSet()
+    val consumed = acknowledgedOrConsumed.filterIsInstance<ConsumableSku>().toSet()
 
     return QueryResult(acknowledged, consumed)
 }
@@ -104,7 +93,7 @@ internal suspend fun BillingClient.queryAcknowledgeAndConsumePurchases(
 
 internal suspend fun BillingClient.querySkuDetails(
     params: SkuDetailsParams
-): QuerySkuDetailsResult = suspendCoroutine {
+): QuerySkuDetailsResult = suspendCancellableCoroutine {
     querySkuDetailsAsync(params) { result, skuDetails ->
         it.resume(QuerySkuDetailsResult(result, skuDetails))
     }
@@ -112,7 +101,7 @@ internal suspend fun BillingClient.querySkuDetails(
 
 internal suspend fun BillingClient.acknowledgePurchase(
     params: AcknowledgePurchaseParams
-): BillingResult = suspendCoroutine {
+): BillingResult = suspendCancellableCoroutine {
     acknowledgePurchase(params) { result ->
         it.resume(result)
     }
@@ -120,7 +109,7 @@ internal suspend fun BillingClient.acknowledgePurchase(
 
 internal suspend fun BillingClient.consumePurchase(
     params: ConsumeParams
-): ConsumeResult = suspendCoroutine {
+): ConsumeResult = suspendCancellableCoroutine {
     consumeAsync(params) { result, purchaseToken ->
         it.resume(ConsumeResult(result, purchaseToken))
     }
@@ -129,11 +118,6 @@ internal suspend fun BillingClient.consumePurchase(
 data class ConsumeResult(
     val result: BillingResult,
     val purchaseToken: String
-)
-
-data class BillingFlowResult(
-    val result: BillingResult,
-    val purchases: List<Purchase>?
 )
 
 data class QuerySkuDetailsResult(

@@ -55,7 +55,7 @@ class BillerImpl(
                         .filterKeys { it != null }
                         .mapKeys { (sku, _) -> sku as ConsumableSku }
                         .forEach { (sku, purchase) ->
-                            if (billingClient.acknowledge(purchase)) launch {
+                            if (billingClient.consume(purchase)) launch {
                                 purchaseState.addConsumed(sku)
                             }
                         }
