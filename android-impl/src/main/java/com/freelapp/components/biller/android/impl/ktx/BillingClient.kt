@@ -3,18 +3,16 @@ package com.freelapp.components.biller.android.impl.ktx
 import com.android.billingclient.api.*
 import com.android.billingclient.api.BillingClient.SkuType.INAPP
 import com.android.billingclient.api.BillingClient.SkuType.SUBS
+import com.freelapp.components.biller.android.impl.entity.ConsumeResult
+import com.freelapp.components.biller.android.impl.entity.QuerySkuDetailsResult
 import com.freelapp.components.biller.entity.sku.AcknowledgeableSku
 import com.freelapp.components.biller.entity.sku.ConsumableSku
 import com.freelapp.components.biller.entity.sku.SkuContract
 import com.freelapp.components.biller.entity.sku.SkuType
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.suspendCancellableCoroutine
-import java.util.concurrent.CancellationException
-import kotlin.coroutines.resume
+import kotlinx.coroutines.flow.*
+import java.lang.RuntimeException import kotlin.coroutines.resume
 
 @ExperimentalCoroutinesApi
 internal suspend fun BillingClient.connectionAsFlow() =
@@ -33,7 +31,26 @@ internal suspend fun BillingClient.connectionAsFlow() =
             }
         }
         startConnection(listener)
-        awaitClose { endConnection() }
+        awaitClose {}
+    }
+
+@ExperimentalCoroutinesApi
+internal fun Flow<BillingClient?>.waitUntilReady(
+    retryDelay: Long = 500L,
+    timeout: Long = 10000L
+): Flow<BillingClient> =
+    flatMapLatest {
+        val resultingFlow = flow {
+            if (it?.isReady == true) emit(it)
+            else throw RuntimeException("Not ready")
+        }.retry {
+            (it is RuntimeException).also { delay(retryDelay) }
+        }
+        flow {
+            withTimeoutOrNull(timeout) {
+                resultingFlow.collect { emit(it) }
+            }
+        }
     }
 
 internal suspend fun BillingClient.acknowledge(purchase: Purchase): Boolean {
@@ -163,17 +180,3 @@ internal suspend fun BillingClient.consumePurchase(
     }
 }
 
-data class ConsumeResult(
-    val result: BillingResult,
-    val purchaseToken: String
-)
-
-data class QuerySkuDetailsResult(
-    val result: BillingResult,
-    val skuDetailsList: List<SkuDetails>?
-)
-
-data class PurchasesUpdatedListenerResult(
-    val result: BillingResult,
-    val purchases: List<Purchase>?
-)

@@ -1,4 +1,4 @@
-package com.freelapp.components.biller.android.impl
+package com.freelapp.components.biller.android.impl.impl
 
 import android.app.Activity
 import com.freelapp.components.biller.entity.purchase.BillingFlow

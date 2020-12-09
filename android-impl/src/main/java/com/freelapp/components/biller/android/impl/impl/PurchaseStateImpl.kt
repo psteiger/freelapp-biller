@@ -1,4 +1,4 @@
-package com.freelapp.components.biller.android.impl
+package com.freelapp.components.biller.android.impl.impl
 
 import com.freelapp.components.biller.entity.purchase.PurchaseState
 import com.freelapp.components.biller.entity.sku.AcknowledgeableSku
