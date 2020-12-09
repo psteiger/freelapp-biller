@@ -34,7 +34,7 @@ subprojects {
             publications {
                 // Creates a Maven publication called "release".
                 release(MavenPublication) {
-                    artifactId = "$rootProject.name-$project.name"
+                    artifactId = "$project.name"
                 }
             }
         }
