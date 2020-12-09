@@ -18,11 +18,12 @@ import com.freelapp.flowlifecycleobserver.observeIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import javax.inject.Inject
 import javax.inject.Singleton
 
 @ExperimentalCoroutinesApi
 @Singleton
-class BillerImpl(
+class BillerImpl @Inject constructor(
     @ApplicationContext context: Context,
     private val acknowledgeableSkus: Set<@JvmSuppressWildcards AcknowledgeableSku>,
     private val consumableSkus: Set<@JvmSuppressWildcards ConsumableSku>
@@ -69,7 +70,7 @@ class BillerImpl(
      * @return whether the flow was launched successfully (not whether the item was purchased
      *         successfully)
      */
-    private suspend fun launchBillingFlow(activity: Activity, sku: SkuContract): Boolean {
+    internal suspend fun launchBillingFlow(activity: Activity, sku: SkuContract): Boolean {
         val skuDetails = skuDetails.value.firstOrNull { it.sku == sku.sku } ?: return false
         val params = BillingFlowParams
             .newBuilder()
@@ -135,7 +136,7 @@ class BillerImpl(
             .observeIn(ProcessLifecycleOwner.get())
     }
 
-    inner class BillingFlowImpl(private val activity: Activity) : BillingFlow {
+    inner class BillingFlowImpl @Inject constructor(private val activity: Activity) : BillingFlow {
         override suspend fun invoke(sku: SkuContract): Boolean = launchBillingFlow(activity, sku)
     }
 
