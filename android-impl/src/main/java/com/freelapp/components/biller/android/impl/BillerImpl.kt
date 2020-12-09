@@ -43,7 +43,7 @@ class BillerImpl(
                     purchaseSet
                         .associateBy { acknowledgeableSkus.getBySku(it.sku) }
                         .filterKeys { it != null }
-                        .mapKeys { it as AcknowledgeableSku }
+                        .mapKeys { (sku, _) -> sku as AcknowledgeableSku }
                         .forEach { (sku, purchase) ->
                             if (billingClient.acknowledge(purchase)) {
                                 purchaseState.addAcknowledged(sku)
@@ -53,7 +53,7 @@ class BillerImpl(
                     purchaseSet
                         .associateBy { consumableSkus.getBySku(it.sku) }
                         .filterKeys { it != null }
-                        .mapKeys { it as ConsumableSku }
+                        .mapKeys { (sku, _) -> sku as ConsumableSku }
                         .forEach { (sku, purchase) ->
                             if (billingClient.acknowledge(purchase)) launch {
                                 purchaseState.addConsumed(sku)
