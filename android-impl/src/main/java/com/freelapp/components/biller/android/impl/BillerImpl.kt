@@ -2,6 +2,7 @@ package com.freelapp.components.biller.android.impl
 
 import android.app.Activity
 import android.content.Context
+import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.android.billingclient.api.*
@@ -13,62 +14,28 @@ import com.freelapp.components.biller.entity.purchase.PurchaseState
 import com.freelapp.components.biller.entity.sku.AcknowledgeableSku
 import com.freelapp.components.biller.entity.sku.ConsumableSku
 import com.freelapp.components.biller.entity.sku.SkuContract
-import com.freelapp.components.biller.entity.sku.SkuType
-import com.freelapp.flowlifecycleobserver.observe
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.delay
+import com.freelapp.flowlifecycleobserver.observeIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
+import javax.inject.Singleton
 
+@ExperimentalCoroutinesApi
+@Singleton
 class BillerImpl(
-    context: Context,
-    private val acknowledgeableSkus: Set<AcknowledgeableSku> = emptySet(),
-    private val consumableSkus: Set<ConsumableSku> = emptySet()
-) : PurchaseState.Owner {
+    @ApplicationContext context: Context,
+    private val acknowledgeableSkus: Set<@JvmSuppressWildcards AcknowledgeableSku>,
+    private val consumableSkus: Set<@JvmSuppressWildcards ConsumableSku>
+) : PurchaseState.Owner,
+    DefaultLifecycleObserver {
 
     override val purchaseState: PurchaseState = PurchaseStateImpl()
 
-    private val skuDetailsMap: MutableMap<SkuContract, SkuDetails> = mutableMapOf()
+    private val purchasesUpdatedListenerResult = MutableStateFlow<PurchasesUpdatedListenerResult?>(null)
 
     /** Can come from internally launched billing flows or outside sources (Play Store). */
     private val purchasesUpdatedListener = PurchasesUpdatedListener { result, purchases ->
-        when (result.responseCode) {
-            BillingClient.BillingResponseCode.OK,
-            BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED ->
-                ProcessLifecycleOwner.get().lifecycleScope.launch {
-                    val purchaseSet = purchases.orEmpty().toSet()
-
-                    purchaseSet
-                        .associateBy { acknowledgeableSkus.getBySku(it.sku) }
-                        .filterKeys { it != null }
-                        .mapKeys { (sku, _) -> sku as AcknowledgeableSku }
-                        .forEach { (sku, purchase) ->
-                            if (billingClient.acknowledge(purchase)) {
-                                purchaseState.addAcknowledged(sku)
-                            }
-                        }
-
-                    purchaseSet
-                        .associateBy { consumableSkus.getBySku(it.sku) }
-                        .filterKeys { it != null }
-                        .mapKeys { (sku, _) -> sku as ConsumableSku }
-                        .forEach { (sku, purchase) ->
-                            if (billingClient.consume(purchase)) launch {
-                                purchaseState.addConsumed(sku)
-                            }
-                        }
-                }
-        }
-    }
-
-    private val clientStateListener = object : BillingClientStateListener {
-        override fun onBillingSetupFinished(result: BillingResult) {
-            billingClientStatus.tryEmit(result.responseCode)
-        }
-        override fun onBillingServiceDisconnected() {
-            billingClientStatus.tryEmit(BillingClient.BillingResponseCode.SERVICE_DISCONNECTED)
-        }
+        purchasesUpdatedListenerResult.value = PurchasesUpdatedListenerResult(result, purchases)
     }
 
     private val billingClient: BillingClient =
@@ -77,43 +44,33 @@ class BillerImpl(
             .enablePendingPurchases()
             .build()
 
-    private val billingClientStatus = MutableSharedFlow<Int>(
-        replay = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
+    private val connectionManager = ConnectionManagerImpl(billingClient)
 
-    private suspend fun BillingClient.updateSkuDetails() {
-        setOf(SkuType.SUBS, SkuType.INAPP).forEach { updateSkuDetails(it) }
-    }
-
-    private suspend fun BillingClient.updateSkuDetails(skuType: SkuType) {
-        val skus = (acknowledgeableSkus + consumableSkus)
-            .filter { it.type == skuType }
-            .toSet()
-        val params = SkuDetailsParams.newBuilder()
-            .setSkusList(skus.map { it.sku })
-            .setType(skuType.toBillingClientSkuType())
-            .build()
-
-        with (querySkuDetails(params)) {
-            if (result.isOk()) {
-                skuDetailsList?.forEach { skuDetails ->
-                    skus.getBySku(skuDetails.sku)?.let {
-                        it.price.value = skuDetails.price
-                        it.paymentPeriod.value = skuDetails.paymentPeriod
-                        skuDetailsMap[it] = skuDetails
+    private val skuDetails: StateFlow<List<SkuDetails>> =
+        connectionManager
+            .connectionStatus
+            .filter { it == BillingClient.BillingResponseCode.OK }
+            .map { billingClient.querySkuDetails(acknowledgeableSkus + consumableSkus) }
+            .onEach { skuDetailList ->
+                skuDetailList.forEach {
+                    (acknowledgeableSkus + consumableSkus).getBySku(it.sku)?.let { sku ->
+                        sku.price.value = it.price
+                        sku.paymentPeriod.value = it.paymentPeriod
                     }
                 }
             }
-        }
-    }
+            .stateIn(
+                ProcessLifecycleOwner.get().lifecycleScope,
+                SharingStarted.Eagerly,
+                emptyList()
+            )
 
     /**
      * @return whether the flow was launched successfully (not whether the item was purchased
      *         successfully)
      */
     private suspend fun launchBillingFlow(activity: Activity, sku: SkuContract): Boolean {
-        val skuDetails = skuDetailsMap[sku] ?: return false
+        val skuDetails = skuDetails.value.firstOrNull { it.sku == sku.sku } ?: return false
         val params = BillingFlowParams
             .newBuilder()
             .setSkuDetails(skuDetails)
@@ -124,29 +81,58 @@ class BillerImpl(
 
     private suspend fun requireBillingClientSetup(): Boolean =
         withTimeoutOrNull(TIMEOUT_MILLIS) {
-            billingClientStatus.first { it == BillingClient.BillingResponseCode.OK }
+            connectionManager
+                .connectionStatus
+                .first { it == BillingClient.BillingResponseCode.OK }
             true
         } ?: false
 
     init {
-        billingClientStatus.tryEmit(BillingClient.BillingResponseCode.SERVICE_DISCONNECTED)
-        billingClientStatus.observe(ProcessLifecycleOwner.get()) {
-            when (it) {
-                BillingClient.BillingResponseCode.OK -> {
-                    billingClient.updateSkuDetails()
-                    val (acknowledged, consumed) =
-                        billingClient.queryAcknowledgeAndConsumePurchases(
-                            acknowledgeableSkus + consumableSkus
-                        )
-                    purchaseState.addAcknowledged(*acknowledged.toTypedArray())
-                    purchaseState.addConsumed(*consumed.toTypedArray())
-                }
-                else -> {
-                    delay(RETRY_MILLIS)
-                    billingClient.startConnection(clientStateListener)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+
+        purchasesUpdatedListenerResult
+            .filterNotNull()
+            .onEach { (result, purchases) ->
+                when (result.responseCode) {
+                    BillingClient.BillingResponseCode.OK,
+                    BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> {
+                        val purchasesMap =
+                            purchases
+                                .orEmpty()
+                                .toSet()
+                                .associateBy { (acknowledgeableSkus + consumableSkus).getBySku(it.sku) }
+                                .filterKeys { it != null }
+
+                        purchasesMap
+                            .filterKeys { it is AcknowledgeableSku }
+                            .forEach { (sku, purchase) ->
+                                if (billingClient.acknowledge(purchase)) {
+                                    purchaseState.addAcknowledged(sku as AcknowledgeableSku)
+                                }
+                            }
+
+                        purchasesMap
+                            .filterKeys { it is ConsumableSku }
+                            .forEach { (sku, purchase) ->
+                                if (billingClient.consume(purchase))
+                                    purchaseState.addConsumed(sku as ConsumableSku)
+                            }
+                    }
                 }
             }
-        }
+            .observeIn(ProcessLifecycleOwner.get())
+
+        connectionManager
+            .connectionStatus
+            .filter { it == BillingClient.BillingResponseCode.OK }
+            .onEach {
+                val (acknowledged, consumed) = billingClient.queryAcknowledgeAndConsumePurchases(
+                    acknowledgeableSkus + consumableSkus
+                )
+                purchaseState.addAcknowledged(*acknowledged.toTypedArray())
+                purchaseState.addConsumed(*consumed.toTypedArray())
+            }
+            .observeIn(ProcessLifecycleOwner.get())
     }
 
     inner class BillingFlowImpl(private val activity: Activity) : BillingFlow {
@@ -155,6 +141,5 @@ class BillerImpl(
 
     private companion object {
         private const val TIMEOUT_MILLIS = 2000L
-        private const val RETRY_MILLIS = 3000L
     }
 }

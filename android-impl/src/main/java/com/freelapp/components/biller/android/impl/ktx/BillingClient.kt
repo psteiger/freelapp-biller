@@ -6,8 +6,35 @@ import com.android.billingclient.api.BillingClient.SkuType.SUBS
 import com.freelapp.components.biller.entity.sku.AcknowledgeableSku
 import com.freelapp.components.biller.entity.sku.ConsumableSku
 import com.freelapp.components.biller.entity.sku.SkuContract
+import com.freelapp.components.biller.entity.sku.SkuType
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.concurrent.CancellationException
 import kotlin.coroutines.resume
+
+@ExperimentalCoroutinesApi
+internal suspend fun BillingClient.connectionAsFlow() =
+    callbackFlow<Int> {
+        val listener = object : BillingClientStateListener {
+            override fun onBillingSetupFinished(result: BillingResult) {
+                val responseCode = result.responseCode
+                runCatching { offer(responseCode) }
+                if (responseCode != BillingClient.BillingResponseCode.OK) {
+                    cancel(CancellationException("onBillingSetupFinished failed with responseCode=$responseCode"))
+                }
+            }
+            override fun onBillingServiceDisconnected() {
+                runCatching { offer(BillingClient.BillingResponseCode.SERVICE_DISCONNECTED) }
+                cancel(CancellationException("onBillingServiceDisconnected"))
+            }
+        }
+        startConnection(listener)
+        awaitClose { endConnection() }
+    }
 
 internal suspend fun BillingClient.acknowledge(purchase: Purchase): Boolean {
     return when (purchase.purchaseState) {
@@ -89,6 +116,27 @@ internal suspend fun BillingClient.queryAcknowledgeAndConsumePurchases(
     return QueryResult(acknowledged, consumed)
 }
 
+internal suspend fun BillingClient.querySkuDetails(skus: Set<SkuContract>): List<SkuDetails> =
+    setOf(SkuType.SUBS, SkuType.INAPP)
+        .map { querySkuDetails(skus, it) }
+        .filter { (result, _) -> result.isOk() }
+        .flatMap { (_, list) -> list.orEmpty() }
+
+internal suspend fun BillingClient.querySkuDetails(
+    skus: Set<SkuContract>,
+    skuType: SkuType
+): QuerySkuDetailsResult {
+    val params = SkuDetailsParams.newBuilder()
+        .setSkusList(
+            skus
+                .filter { it.type == skuType }
+                .toSet()
+                .map { it.sku }
+        )
+        .setType(skuType.toBillingClientSkuType())
+        .build()
+    return querySkuDetails(params)
+}
 // billing-ktx 3.0.1 conflicts with coroutines 4.0.10. implementing ourselves...
 
 internal suspend fun BillingClient.querySkuDetails(
@@ -123,4 +171,9 @@ data class ConsumeResult(
 data class QuerySkuDetailsResult(
     val result: BillingResult,
     val skuDetailsList: List<SkuDetails>?
+)
+
+data class PurchasesUpdatedListenerResult(
+    val result: BillingResult,
+    val purchases: List<Purchase>?
 )
