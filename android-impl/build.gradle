@@ -35,13 +35,10 @@ afterEvaluate {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-
     implementation project(path: ':domain')
-    implementation project(path: ':android-domain')
-    implementation platform("com.google.firebase:firebase-bom:$firebase_bom_version")
-    implementation "com.android.billingclient:billing:3.0.1"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    implementation "com.android.billingclient:billing:$billingclient_version"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:$lifecycle_version"
     implementation "androidx.lifecycle:lifecycle-process:$lifecycle_version"
-    implementation 'com.github.psteiger:flow-lifecycle-observer:0.1.1'
+    implementation "com.github.psteiger:flow-lifecycle-observer:$flow_lifecycle_observer_version"
 }

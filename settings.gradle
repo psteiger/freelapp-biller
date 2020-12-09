@@ -1,4 +1,3 @@
 rootProject.name = "freelapp-biller"
 include ':domain'
 include ':android-impl'
-include ':android-domain'

@@ -10,7 +10,6 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/android-domain" />
             <option value="$PROJECT_DIR$/android-impl" />
             <option value="$PROJECT_DIR$/domain" />
           </set>

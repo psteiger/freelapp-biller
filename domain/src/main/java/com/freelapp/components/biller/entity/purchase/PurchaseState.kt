@@ -10,4 +10,8 @@ interface PurchaseState {
     val consumed: SharedFlow<ConsumableSku>
     fun addAcknowledged(vararg skus: AcknowledgeableSku)
     suspend fun addConsumed(vararg skus: ConsumableSku)
+
+    interface Owner {
+        val purchaseState: PurchaseState
+    }
 }

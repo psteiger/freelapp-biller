@@ -5,12 +5,11 @@ import android.content.Context
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.android.billingclient.api.*
-import com.freelapp.components.biller.android.domain.BillerFlowLauncher
+import com.freelapp.components.biller.entity.purchase.BillingFlow
 import com.freelapp.components.biller.android.impl.ktx.*
 import com.freelapp.components.biller.android.impl.ktx.isOk
 import com.freelapp.components.biller.android.impl.ktx.querySkuDetails
 import com.freelapp.components.biller.entity.purchase.PurchaseState
-import com.freelapp.components.biller.entity.purchase.PurchaseStateOwner
 import com.freelapp.components.biller.entity.sku.AcknowledgeableSku
 import com.freelapp.components.biller.entity.sku.ConsumableSku
 import com.freelapp.components.biller.entity.sku.SkuContract
@@ -26,8 +25,7 @@ class BillerImpl(
     context: Context,
     private val acknowledgeableSkus: Set<AcknowledgeableSku> = emptySet(),
     private val consumableSkus: Set<ConsumableSku> = emptySet()
-) : PurchaseStateOwner,
-    BillerFlowLauncher {
+) : PurchaseState.Owner {
 
     override val purchaseState: PurchaseState = PurchaseStateImpl()
 
@@ -114,7 +112,7 @@ class BillerImpl(
      * @return whether the flow was launched successfully (not whether the item was purchased
      *         successfully)
      */
-    override suspend fun launchBillingFlow(activity: Activity, sku: SkuContract): Boolean {
+    private suspend fun launchBillingFlow(activity: Activity, sku: SkuContract): Boolean {
         val skuDetails = skuDetailsMap[sku] ?: return false
         val params = BillingFlowParams
             .newBuilder()
@@ -148,6 +146,10 @@ class BillerImpl(
                 }
             }
         }
+    }
+
+    inner class BillingFlowImpl(private val activity: Activity) : BillingFlow {
+        override suspend fun invoke(sku: SkuContract): Boolean = launchBillingFlow(activity, sku)
     }
 
     private companion object {

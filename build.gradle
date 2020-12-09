@@ -6,6 +6,8 @@ buildscript {
         firebase_bom_version = '26.1.0'
         lifecycle_version = '2.2.0'
         material_dialogs_version = '3.3.0'
+        billingclient_version = '3.0.2'
+        flow_lifecycle_observer_version = '0.1.1'
     }
     repositories {
         google()
