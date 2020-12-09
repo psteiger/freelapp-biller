@@ -28,19 +28,6 @@ allprojects {
     }
 }
 
-subprojects {
-    afterEvaluate {
-        publishing {
-            publications {
-                // Creates a Maven publication called "release".
-                release(MavenPublication) {
-                    artifactId = "$project.name"
-                }
-            }
-        }
-    }
-}
-
 task clean(type: Delete) {
     delete rootProject.buildDir
 }

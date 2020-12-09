@@ -22,6 +22,18 @@ android {
     }
 }
 
+afterEvaluate {
+    publishing {
+        publications {
+            // Creates a Maven publication called "release".
+            release(MavenPublication) {
+                from components.java
+                artifactId = "$project.name"
+            }
+        }
+    }
+}
+
 dependencies {
     implementation project(path: ':domain')
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
