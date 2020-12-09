@@ -136,10 +136,6 @@ class BillerImpl @Inject constructor(
             .observeIn(ProcessLifecycleOwner.get())
     }
 
-    inner class BillingFlowImpl @Inject constructor(private val activity: Activity) : BillingFlow {
-        override suspend fun invoke(sku: SkuContract): Boolean = launchBillingFlow(activity, sku)
-    }
-
     private companion object {
         private const val TIMEOUT_MILLIS = 2000L
     }
