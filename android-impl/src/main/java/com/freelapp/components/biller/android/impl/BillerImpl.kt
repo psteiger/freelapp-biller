@@ -38,6 +38,7 @@ class BillerImpl(
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED ->
                 ProcessLifecycleOwner.get().lifecycleScope.launch {
                     val purchaseSet = purchases.orEmpty().toSet()
+
                     purchaseSet
                         .associateBy { acknowledgeableSkus.getBySku(it.sku) }
                         .filterKeys { it != null }
@@ -65,7 +66,6 @@ class BillerImpl(
         override fun onBillingSetupFinished(result: BillingResult) {
             billingClientStatus.tryEmit(result.responseCode)
         }
-
         override fun onBillingServiceDisconnected() {
             billingClientStatus.tryEmit(BillingClient.BillingResponseCode.SERVICE_DISCONNECTED)
         }
@@ -82,12 +82,11 @@ class BillerImpl(
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
-
-    private suspend fun BillingClient.updateSkuPrices() {
-        setOf(SkuType.SUBS, SkuType.INAPP).forEach { updateSkuPrices(it) }
+    private suspend fun BillingClient.updateSkuDetails() {
+        setOf(SkuType.SUBS, SkuType.INAPP).forEach { updateSkuDetails(it) }
     }
 
-    private suspend fun BillingClient.updateSkuPrices(skuType: SkuType) {
+    private suspend fun BillingClient.updateSkuDetails(skuType: SkuType) {
         val skus = (acknowledgeableSkus + consumableSkus)
             .filter { it.type == skuType }
             .toSet()
@@ -101,6 +100,7 @@ class BillerImpl(
                 skuDetailsList?.forEach { skuDetails ->
                     skus.getBySku(skuDetails.sku)?.let {
                         it.price.value = skuDetails.price
+                        it.paymentPeriod.value = skuDetails.paymentPeriod
                         skuDetailsMap[it] = skuDetails
                     }
                 }
@@ -133,10 +133,11 @@ class BillerImpl(
         billingClientStatus.observe(ProcessLifecycleOwner.get()) {
             when (it) {
                 BillingClient.BillingResponseCode.OK -> {
-                    billingClient.updateSkuPrices()
-                    val (acknowledged, consumed) = billingClient.queryAcknowledgeAndConsumePurchases(
-                        acknowledgeableSkus + consumableSkus
-                    )
+                    billingClient.updateSkuDetails()
+                    val (acknowledged, consumed) =
+                        billingClient.queryAcknowledgeAndConsumePurchases(
+                            acknowledgeableSkus + consumableSkus
+                        )
                     purchaseState.addAcknowledged(*acknowledged.toTypedArray())
                     purchaseState.addConsumed(*consumed.toTypedArray())
                 }
