@@ -83,7 +83,7 @@ internal suspend fun BillingClient.queryAcknowledgeAndConsumePurchases(
             }
             .toMap()
             .filterValues { it }
-            .mapKeys { it as AcknowledgeableSku }
+            .mapKeys { (sku, _) -> sku as AcknowledgeableSku }
             .keys
     val consumed =
         purchases
@@ -94,7 +94,7 @@ internal suspend fun BillingClient.queryAcknowledgeAndConsumePurchases(
             }
             .toMap()
             .filterValues { it }
-            .mapKeys { it as ConsumableSku }
+            .mapKeys { (sku, _) -> sku as ConsumableSku }
             .keys
 
     return QueryResult(acknowledged, consumed)
