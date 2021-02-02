@@ -7,15 +7,15 @@ buildscript {
         lifecycle_version = '2.2.0'
         material_dialogs_version = '3.3.0'
         billingclient_version = '3.0.2'
-        flow_lifecycle_observer_version = '0.1.1'
-        hilt_version = '2.30-alpha'
+        flow_lifecycle_observer_version = '0.2.1'
+        hilt_version = '2.31.2-alpha'
     }
     repositories {
         google()
         jcenter()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.0.0-alpha02'
+        classpath 'com.android.tools.build:gradle:7.0.0-alpha05'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
 
         // NOTE: Do not place your application dependencies here; they belong
